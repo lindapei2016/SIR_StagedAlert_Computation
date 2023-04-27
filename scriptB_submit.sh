@@ -1,6 +1,6 @@
 #$ -cwd
 #$ -N SIR_det_2stages_scriptB
-#$ -o SIR_det_2stages_scriptA.txt
+#$ -o SIR_det_2stages_scriptB.txt
 #$ -j y
 #$ -S /bin/bash
 #$ -pe mpi 100

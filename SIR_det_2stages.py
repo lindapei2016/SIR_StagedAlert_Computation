@@ -24,12 +24,14 @@ import sys
 sys.stdout.flush()
 
 # For exploratory plotting -- turn this off for cluster
-import matplotlib.pyplot as plt
-import matplotlib
+# import matplotlib.pyplot as plt
+# import matplotlib
 
-matplotlib.use("TkAgg")
+# matplotlib.use("TkAgg")
 
-import scipy as sp
+# import scipy as sp
+
+import time
 
 ###############################################################################
 
@@ -42,7 +44,64 @@ master_rank = size - 1
 eps = 1e-6
 
 
+class Results:
+    '''
+    Container for results of simulating staged-alert policy.
+    '''
+
+    def __init__(self):
+        '''
+        :param cost: [scalar] cost of staged-alert policy over
+            simulation timeframe
+        :param num_lockdowns: [int] number of lockdowns
+        :param x0: [array of 0-1s] jth element indicates whether
+            system was in stage 0 ("normal") at simulation time j
+        :param x1: [array of 0-1s] jth element indicates whether
+            system was in stage 1 (lockdown) at simulation time j
+        :param S: [array of reals] jth element is proportion
+            of population in Susceptible compartment j
+        :param I: [array of reals] jth element is proportion
+            of population in Infected compartment at time j
+        :return: [None]
+        '''
+        self.cost = np.inf
+        self.num_lockdowns = 0
+        self.x0 = np.array([])
+        self.x1 = np.array([])
+        self.S = np.array([])
+        self.I = np.array([])
+
+    def update(self, cost, num_lockdowns, x0, x1, S, I):
+        '''
+        See __init__ parameters for documentation.
+        Updates all attributes according to passed values.
+        :return: [None]
+        '''
+        self.cost = cost
+        self.num_lockdowns = num_lockdowns
+        self.x0 = x0
+        self.x1 = x1
+        self.S = S
+        self.I = I
+
+    def clear(self):
+        '''
+        Resets all attributes to default values in place.
+        :return: [None]
+        '''
+        self.cost = np.inf
+        self.num_lockdowns = 0
+        self.x0 = np.array([])
+        self.x1 = np.array([])
+        self.S = np.array([])
+        self.I = np.array([])
+
+
 class ProblemInstance:
+
+    '''
+    Class for simulating and optimizing staged alert policies.
+    '''
 
     def __init__(self):
         self.time_end = SIR_params.time_end
@@ -58,6 +117,11 @@ class ProblemInstance:
         self.threshold_up = SIR_params.threshold_up
         self.threshold_down = SIR_params.threshold_down
         self.grid_grain = SIR_params.grid_grain
+
+        self.max_lockdowns_allowed = SIR_params.max_lockdowns_allowed
+        self.full_output = SIR_params.full_output
+
+        self.results = Results()
 
     @staticmethod
     def thresholds_generator(threshold_up_info, threshold_down_info, symmetric=True):
@@ -109,7 +173,11 @@ class ProblemInstance:
 
         return self.cost0 * np.sum(x0_vector) + self.cost1 * np.sum(x1_vector)
 
-    def simulate_policy(self, full_output=False):
+    def simulate_policy(self):
+
+        self.results.clear()
+
+        num_lockdowns = 0
 
         feasible = True
         cost = np.inf
@@ -123,7 +191,8 @@ class ProblemInstance:
         S[0] = self.S_start
         I[0] = self.I_start
 
-        x0[0] = 0
+        # Start in stage 0
+        x0[0] = 1
         x1[0] = 0
 
         I_constraint = self.I_constraint
@@ -147,23 +216,50 @@ class ProblemInstance:
             I[t] = I[t - 1] + (beta[t] * S[t - 1] * I[t - 1] - I[t - 1] / tau) * \
                    1 / ODE_steps
 
-            if I[t] >= threshold_up:
-                x1[t] = 1
-            elif x1[t-1] == 1 and I[t] < threshold_down:
-                x0[t] = 1
-            elif x1[t-1] == 0 and I[t] < threshold_up:
-                x0[t] = 1
+            # If previous stage was stage 0, check conditions for moving to stage 1
+            if x0[t-1] == 1:
+                if I[t] >= threshold_up:
+                    # If lockdown budget left, move to stage 1 (lockdown)
+                    if num_lockdowns < self.max_lockdowns_allowed:
+                        num_lockdowns += 1
+                        x1[t] = 1
+                    # If no lockdown budget left, remain in stage 0
+                    else:
+                        x0[t] = x0[t-1]
+                else:
+                    x0[t] = x0[t-1]
+            # Else if previous stage was stage 1, check conditions for moving to stage 0
+            elif x1[t-1] == 1:
+                if I[t] < threshold_down:
+                    # If infections decreasing, move to stage 0
+                    # This condition handles the case where
+                    #   lockdown_up < lockdown_down -- in this case,
+                    #   we only want to leave lockdown if infections
+                    #   are decreasing -- otherwise, we would leave
+                    #   lockdown as soon as we entered lockdown
+                    if I[t] < I[t-1]:
+                        x0[t] = 1
+                    # If infections still increasing, remain in stage 1
+                    else:
+                        x1[t] = x1[t-1]
+                else:
+                    x1[t] = x1[t-1]
 
             if I[t] >= I_constraint:
                 feasible = False
 
+                x0 = x0[:t+1]
+                x1 = x1[:t+1]
+                S = S[:t+1]
+                I = I[:t+1]
+
+                if not self.full_output:
+                    break
+
         if feasible:
             cost = self.cost_func_linear(x0, x1)
 
-        if full_output == False:
-            return cost, x0, x1
-        else:
-            return cost, x0, x1, S, I
+        self.results.update(cost, num_lockdowns, x0, x1, S, I)
 
     def simulate_many_policies(self, policies):
 
@@ -171,6 +267,8 @@ class ProblemInstance:
         :param policies: [array] of 2-tuples, each of which have a first value
             less than or equal to its second value -- e.g., output from
             thresholds_generator
+        :param full_output: [Boolean] whether to output x0, x1, S, I
+            in addition to cost
         :return: cost_history: [array] of cost scalars -- ith value corresponds
                 to cost of ith policy in policies
             total_x0_history: [array] of nonnegative scalars -- ith value
@@ -182,6 +280,7 @@ class ProblemInstance:
         '''
 
         cost_history = []
+        num_lockdowns_history = []
         total_x0_history = []
         total_x1_history = []
 
@@ -192,19 +291,35 @@ class ProblemInstance:
             self.threshold_up = thresholds[0]
             self.threshold_down = thresholds[1]
 
-            cost, x0, x1 = self.simulate_policy()
+            self.simulate_policy()
+            cost_history.append(self.results.cost)
+            num_lockdowns_history.append(self.results.num_lockdowns)
 
-            cost_history.append(cost)
-            total_x0_history.append(np.sum(x0))
-            total_x1_history.append(np.sum(x1))
+            if self.full_output:
+                total_x0_history.append(np.sum(self.results.x0))
+                total_x1_history.append(np.sum(self.results.x1))
 
-        return cost_history, total_x0_history, total_x1_history
+        if not self.full_output:
+            return cost_history, num_lockdowns_history
+        else:
+            return cost_history, num_lockdowns_history, total_x0_history, total_x1_history
 
     def find_optimum(self, policies, filename_prefix):
 
-        cost_history, total_x0_history, total_x1_history = self.simulate_many_policies(policies)
-        best = np.argmin(cost_history)
-        np.savetxt(filename_prefix + "_cost_history.csv", cost_history, delimiter=",")
-        np.savetxt(filename_prefix + "_total_x0_history.csv", total_x0_history, delimiter=",")
-        np.savetxt(filename_prefix + "_total_x1_history.csv", total_x1_history, delimiter=",")
-        return filename_prefix, policies[best], cost_history[best], total_x0_history[best], total_x1_history[best]
+        if not self.full_output:
+            cost_history, num_lockdowns_history = self.simulate_many_policies(policies)
+            best = np.argmin(cost_history)
+            np.savetxt(filename_prefix + "_cost_history.csv", cost_history, delimiter=",")
+            np.savetxt(filename_prefix + "_num_lockdowns_history.csv", num_lockdowns_history, delimiter=",")
+            return filename_prefix, policies[best], cost_history[best], num_lockdowns_history[best]
+
+        else:
+            cost_history, num_lockdowns_history, total_x0_history, total_x1_history = self.simulate_many_policies(policies)
+            best = np.argmin(cost_history)
+            np.savetxt(filename_prefix + "_cost_history.csv", cost_history, delimiter=",")
+            np.savetxt(filename_prefix + "_num_lockdowns_history.csv", num_lockdowns_history, delimiter=",")
+            np.savetxt(filename_prefix + "_total_x0_history.csv", total_x0_history, delimiter=",")
+            np.savetxt(filename_prefix + "_total_x1_history.csv", total_x1_history, delimiter=",")
+            return filename_prefix, policies[best], cost_history[best], num_lockdowns_history[best], total_x0_history[best], total_x1_history[best]
+
+
