@@ -71,6 +71,18 @@ class Results:
         self.S = np.array([])
         self.I = np.array([])
 
+    def __call__(self):
+        '''
+        Prints instance attributes
+        :return: [None]
+        '''
+        print("Cost is " + str(self.cost))
+        print("Number of lockdowns: " + str(self.num_lockdowns))
+        print("x0: " + str(self.x0))
+        print("x1: " + str(self.x1))
+        print("S: " + str(self.S))
+        print("I: " + str(self.I))
+
     def update(self, cost, num_lockdowns, x0, x1, S, I):
         '''
         See __init__ parameters for documentation.
@@ -159,13 +171,15 @@ class ProblemInstance:
             for combo in itertools.product(*threshold_options):
                 threshold_candidates.append(combo)
 
+            threshold_candidates_feasible = threshold_candidates
+
             # Eliminate 2-tuples that do not satisfy monotonicity constraint
             # However, ties in thresholds are allowed
             # threshold_up cannot be smaller than threshold_down
-            threshold_candidates_feasible = []
-            for combo in threshold_candidates:
-                if np.all(np.diff(combo) <= 0):
-                    threshold_candidates_feasible.append(combo)
+            # threshold_candidates_feasible = []
+            # for combo in threshold_candidates:
+            #     if np.all(np.diff(combo) <= 0):
+            #        threshold_candidates_feasible.append(combo)
 
         return threshold_candidates_feasible
 
@@ -248,12 +262,11 @@ class ProblemInstance:
             if I[t] >= I_constraint:
                 feasible = False
 
-                x0 = x0[:t+1]
-                x1 = x1[:t+1]
-                S = S[:t+1]
-                I = I[:t+1]
-
                 if not self.full_output:
+                    x0 = x0[:t + 1]
+                    x1 = x1[:t + 1]
+                    S = S[:t + 1]
+                    I = I[:t + 1]
                     break
 
         if feasible:
