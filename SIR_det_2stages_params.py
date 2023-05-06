@@ -10,7 +10,7 @@ import numpy as np
 ODE_steps = 100.0
 
 # Total number of ODE timesteps per simulation
-time_end = 1000000
+time_end = 200000
 
 # Granularity for brute force search for optimization
 grid_grain = 0.001
