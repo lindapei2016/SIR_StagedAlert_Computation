@@ -7,10 +7,14 @@
 import numpy as np
 
 # Number of ODE timesteps per time unit (discretization factor)
+# 10 steps per tick is too rough for I_constraint = 0.1, beta0 = 3/10, tau = 10
+#   (compared to continuous values)
+# 100 steps seems like a good compromise
+# 1000 is better, 10000 is almost continuous
 ODE_steps = 100.0
 
 # Total number of ODE timesteps per simulation
-time_end = 200000
+time_end = 20000
 
 # Granularity for brute force search for optimization
 grid_grain = 0.001

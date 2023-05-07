@@ -43,6 +43,8 @@ master_rank = size - 1
 
 eps = 1e-6
 
+###############################################################################
+
 
 class Results:
     '''
@@ -140,7 +142,6 @@ class ProblemInstance:
 
     @staticmethod
     def thresholds_generator(threshold_up_info, threshold_down_info, symmetric=True):
-
         """
         :param threshold_up_info: [3-tuple] with elements corresponding to
             start point, end point, and step size (all must be integers)
@@ -286,7 +287,7 @@ class ProblemInstance:
             #   optimization purposes
             # If self.full_output == True, e.g. for plotting purposes,
             #   do not early terminate here
-            if x0[t] == 1 and S[t] > 1 / (self.beta0 * self.tau):
+            if x0[t] == 1 and S[t] < 1 / (self.beta0 * self.tau):
 
                 if not self.full_output:
                     x0 = x0[:t + 1]
@@ -301,8 +302,8 @@ class ProblemInstance:
         self.results.update(cost, num_lockdowns, x0, x1, S, I, R)
 
     def simulate_many_policies(self, policies):
-
         '''
+        Calls simulate_policy as subroutine for each policy in policies
         :param policies: [array] of 2-tuples, each of which have a first value
             less than or equal to its second value -- e.g., output from
             thresholds_generator
@@ -344,6 +345,18 @@ class ProblemInstance:
             return cost_history, num_lockdowns_history, total_x0_history, total_x1_history
 
     def find_optimum(self, policies, filename_prefix):
+        '''
+        Calls simulate_many_policies as subroutine on set of policies
+            and identifies best policy (with min cost)
+        Can print this function to write optimization summary
+            as line is .txt/.csv file during cluster runs
+        :param policies:
+        :param filename_prefix: [str] common prefix for output files
+        :return: [str] common prefix for output files,
+            [int] ID of best policy (with min cost)
+            [int] cost of best policy
+            [int] number of lockdowns in best policy
+        '''
 
         if not self.full_output:
             cost_history, num_lockdowns_history = self.simulate_many_policies(policies)
@@ -360,9 +373,11 @@ class ProblemInstance:
             np.savetxt(filename_prefix + "_num_lockdowns_history.csv", num_lockdowns_history, delimiter=",")
             np.savetxt(filename_prefix + "_total_x0_history.csv", total_x0_history, delimiter=",")
             np.savetxt(filename_prefix + "_total_x1_history.csv", total_x1_history, delimiter=",")
-            return filename_prefix, policies[best], cost_history[best], num_lockdowns_history[best], total_x0_history[
-                best], total_x1_history[best]
+            return filename_prefix, policies[best], cost_history[best], \
+                   num_lockdowns_history[best], total_x0_history[best], total_x1_history[best]
 
+
+###############################################################################
 
 # Check analytically to see if a threshold is feasible
 #   (for two stages, a "normal" stage and a lockdown stage).
@@ -397,36 +412,41 @@ def build_sol_curve_eq(I0_val, I_val, S0_val, R0_val):
     return sol_curve_eq
 
 
-problem = ProblemInstance()
-problem.kappa = 0.5
-problem.threshold_up = 0.067
-problem.threshold_down = 0.09
-problem.full_output = True
+###############################################################################
 
-sol_curve_eq = build_sol_curve_eq(problem.I_start,
-                                  problem.threshold_up,
-                                  problem.S_start,
-                                  problem.beta0 * problem.tau)
-
-S_val = np.max(sp.optimize.newton(sol_curve_eq, [eps, 1]))
-
-sol_curve_eq = build_sol_curve_eq(problem.threshold_up,
-                                  problem.threshold_down,
-                                  S_val,
-                                  problem.beta0 * (1 - problem.kappa) * problem.tau)
-
-S_val = np.min(sp.optimize.newton(sol_curve_eq, [eps, S_val, 1]))
-
-print(compute_max_infections(problem.threshold_down,
-                             S_val,
-                             problem.beta0 * problem.tau))
-
-problem.simulate_policy()
-I_descending = np.sort(problem.results.I)[::-1]
-print(I_descending)
-
-breakpoint()
+# problem = ProblemInstance()
+# problem.kappa = 0.5
+# problem.threshold_up = 0.067
+# problem.threshold_down = 0.09
+# problem.full_output = True
+#
+# sol_curve_eq = build_sol_curve_eq(problem.I_start,
+#                                   problem.threshold_up,
+#                                   problem.S_start,
+#                                   problem.beta0 * problem.tau)
+#
+# S_val = np.max(sp.optimize.newton(sol_curve_eq, [eps, 1]))
+#
+# sol_curve_eq = build_sol_curve_eq(problem.threshold_up,
+#                                   problem.threshold_down,
+#                                   S_val,
+#                                   problem.beta0 * (1 - problem.kappa) * problem.tau)
+#
+# S_val = np.min(sp.optimize.newton(sol_curve_eq, [eps, S_val, 1]))
+#
+# print(compute_max_infections(problem.threshold_down,
+#                              S_val,
+#                              problem.beta0 * problem.tau))
+#
+# problem.simulate_policy()
+# I_descending = np.sort(problem.results.I)[::-1]
+# print(I_descending)
+#
+# breakpoint()
 
 # According to formula, need beta*tau <= 1.693 roughly to have peak infections
 #   less than 0.1 -- for beta = beta0 * (1-kappa), beta0 = 0.3 and tau = 10,
 #   this means we need kappa >= 0.436 roughly.
+
+# For peak infections <= 0.2, need beta*tau <= 2.27 --> kappa >= 0.243
+# For peak infections <= 0.4, need beta*tau <= 3.95 --> any kappa will do
