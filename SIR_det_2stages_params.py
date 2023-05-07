@@ -10,11 +10,10 @@ I_start = 0.0025
 beta0 = 3.0 / 10.0
 tau = 10
 
-kappa1 = 0
-kappa2 = 1
+kappa = 0
 
-cost1 = 0
-cost2 = 1
+cost0 = 0
+cost1 = 1
 
-threshold1 = 0
-threshold2 = 1
+threshold_up = 1
+threshold_down = 1
