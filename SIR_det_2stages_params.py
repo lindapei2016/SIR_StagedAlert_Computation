@@ -4,6 +4,8 @@
 
 ###############################################################################
 
+import numpy as np
+
 # Number of ODE timesteps per time unit (discretization factor)
 ODE_steps = 100.0
 

@@ -22,6 +22,8 @@ sys.stdout.flush()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+problem_type = sys.argv[1]
+
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
@@ -33,21 +35,42 @@ eps = 1e-6
 #   where optimal means minimum number of days in stage 2
 
 problem = SIR.ProblemInstance()
-policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
-                                                    (0, 1 + eps, 0.05),
-                                                    symmetric=False)
-
-# 100 processors
 problem.kappa = 1/100 * ((rank + 1) % 100)
-print(problem.find_optimum(policies, str(int(problem.kappa * 100))))
 
-# 400 processors
-# 100 values of kappa to test from 1/100 to 1
-# 4 chunks of policies to distribute
+if problem_type == "A":
+    symmetric_policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                                  (0, problem.I_constraint + eps, problem.grid_grain),
+                                                                  symmetric=True)
+    asymmetric_policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                                   (0, problem.I_constraint + eps, problem.grid_grain),
+                                                                   symmetric=False)
 
-# problem.kappa = 1/100 * ((rank + 1) % 100)
-# num_policies = len(policies)
-# splits = np.array_split(np.array(policies), 4)
+    if rank < 100:
+        print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_symmetric_max1"))
+        print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_asymmetric_max1"))
 
-# print(problem.find_optimum(tuple(splits[(rank % 100) % 4]), str(int(problem.kappa * 100)) + "_" + str((rank % 100) % 4)))
+    elif rank < 200:
+        problem.max_lockdowns_allowed = np.inf
+        print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_symmetric_nomax"))
+        print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_asymmetric_nomax"))
 
+elif problem_type == "B":
+
+    if rank < 100:
+        problem.I_constraint = 0.2
+    elif rank < 200:
+        problem.I_constraint = 0.4
+
+    symmetric_policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                                  (0, problem.I_constraint + eps, problem.grid_grain),
+                                                                  symmetric=True)
+    asymmetric_policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                                   (0, problem.I_constraint + eps, problem.grid_grain),
+                                                                   symmetric=False)
+
+    print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_constraint" + str(problem.I_constraint) + "_symmetric_max1"))
+    print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_constraint" + str(problem.I_constraint) + "_asymmetric_max1"))
+
+    problem.max_lockdowns_allowed = np.inf
+    print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_constraint" + str(problem.I_constraint) + "_symmetric_nomax"))
+    print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_constraint" + str(problem.I_constraint) + "_asymmetric_nomax"))
