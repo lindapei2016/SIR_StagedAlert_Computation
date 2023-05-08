@@ -37,8 +37,6 @@ eps = 1e-6
 problem = SIR.ProblemInstance()
 problem.kappa = 0.43 + 1/100 * ((rank + 1) % 58)
 
-breakpoint()
-
 if problem_type == "A":
     symmetric_policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
                                                                   (0, problem.I_constraint + eps, problem.grid_grain),
@@ -58,7 +56,7 @@ if problem_type == "A":
 
 elif problem_type == "B":
 
-    for val in (0.4, 0.2):
+    for val in (0.2, 0.25, 0.15):
 
         problem.I_constraint = val
 
@@ -76,3 +74,31 @@ elif problem_type == "B":
 
         print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_constraint" + str(problem.I_constraint) + "_symmetric_max1"))
         print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_constraint" + str(problem.I_constraint) + "_asymmetric_max1"))
+
+elif problem_type == "C":
+
+    problem.inertia = 14 * problem.ODE_steps
+
+    symmetric_policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                                  (0, problem.I_constraint + eps, problem.grid_grain),
+                                                                  symmetric=True)
+    asymmetric_policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                                   (0, problem.I_constraint + eps, problem.grid_grain),
+                                                                   symmetric=False)
+    if rank < 58:
+        problem.max_lockdowns_allowed = 3
+        print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_symmetric_max3"))
+        print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_asymmetric_max3"))
+
+        problem.max_lockdowns_allowed = 2
+        print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_symmetric_max2"))
+        print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_asymmetric_max2"))
+
+    else:
+        problem.max_lockdowns_allowed = np.inf
+        print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_symmetric_nomax"))
+        print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_asymmetric_nomax"))
+
+        problem.max_lockdowns_allowed = 1
+        print(problem.find_optimum(symmetric_policies, str(int(problem.kappa * 100)) + "_symmetric_nomax"))
+        print(problem.find_optimum(asymmetric_policies, str(int(problem.kappa * 100)) + "_asymmetric_nomax"))

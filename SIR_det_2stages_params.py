@@ -66,3 +66,8 @@ max_lockdowns_allowed = 1
 #   at time t, then x0, x1, S, and I are only recorded
 #   through time t, and no further.
 full_output = False
+
+# Number of time units to remain in one stage
+# e.g. Austin had 14-day rule, and to use
+#   14-day rule set inertia to 14 * ODE_steps
+inertia = 0

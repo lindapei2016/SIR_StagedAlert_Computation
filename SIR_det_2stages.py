@@ -134,6 +134,7 @@ class ProblemInstance:
         self.threshold_up = SIR_params.threshold_up
         self.threshold_down = SIR_params.threshold_down
         self.grid_grain = SIR_params.grid_grain
+        self.inertia = SIR_params.inertia
 
         self.max_lockdowns_allowed = SIR_params.max_lockdowns_allowed
         self.full_output = SIR_params.full_output
@@ -227,10 +228,16 @@ class ProblemInstance:
 
         ODE_steps = self.ODE_steps
 
+        inertia = self.inertia
+
+        time_since_last_change = 0
+
         t = 0
 
         # while S > 1/R0 (herd immunity not yet reached)
         for t in range(1, self.time_end):
+
+            time_since_last_change += 1
 
             beta[t] = beta0 * (1 - kappa * x1[t - 1])
 
@@ -245,10 +252,12 @@ class ProblemInstance:
             if x0[t - 1] == 1:
                 if I[t] >= threshold_up:
                     # If lockdown budget left, move to stage 1 (lockdown)
-                    if num_lockdowns < self.max_lockdowns_allowed:
+                    if num_lockdowns < self.max_lockdowns_allowed and time_since_last_change >= inertia:
                         num_lockdowns += 1
                         x1[t] = 1
+                        time_since_last_change = 0
                     # If no lockdown budget left, remain in stage 0
+                    # Or if changing stages not allowed due to inertia, remain in stage 0
                     else:
                         x0[t] = x0[t - 1]
                 else:
@@ -262,9 +271,10 @@ class ProblemInstance:
                     #   we only want to leave lockdown if infections
                     #   are decreasing -- otherwise, we would leave
                     #   lockdown as soon as we entered lockdown
-                    if I[t] < I[t - 1]:
+                    if I[t] < I[t - 1] and time_since_last_change >= inertia:
                         x0[t] = 1
-                    # If infections still increasing, remain in stage 1
+                        time_since_last_change = 0
+                    # If infections still increasing or inertia constraint, remain in stage 1
                     else:
                         x1[t] = x1[t - 1]
                 else:
@@ -415,10 +425,14 @@ def build_sol_curve_eq(I0_val, I_val, S0_val, R0_val):
 ###############################################################################
 
 # problem = ProblemInstance()
+# problem.inertia = 0
 # problem.kappa = 0.5
 # problem.threshold_up = 0.067
 # problem.threshold_down = 0.09
 # problem.full_output = True
+# problem.simulate_policy()
+#
+# breakpoint()
 #
 # sol_curve_eq = build_sol_curve_eq(problem.I_start,
 #                                   problem.threshold_up,
