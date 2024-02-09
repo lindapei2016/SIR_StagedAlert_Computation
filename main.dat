@@ -1,0 +1,12 @@
+# one way to input the data in AMPL format
+# for indexed parameters, the indexes are given before the value
+
+param s_0 := 0;
+
+param beta_0 := 3/10;
+
+param i_0 := 0;
+
+param tau := 10;
+
+param i_hospital := 0.1;

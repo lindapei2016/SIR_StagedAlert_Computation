@@ -124,9 +124,11 @@ def clean_brute_force_cluster_txt(filename, df_name_prefix):
 
 ###############################################################################
 
+# Change filenames accordingly
+
 need_clean = False
 
-if need_clean == True:
+if need_clean:
 
     filename = "/Users/linda/Dropbox/RESEARCH/CurrentResearchProjects/StagedAlertTheory/" \
                 "StagedAlertTheoryCode/Results/05032023a/SIR_det_2stages_scriptB.txt"

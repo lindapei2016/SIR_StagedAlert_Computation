@@ -11,13 +11,13 @@ import numpy as np
 #   (compared to continuous values)
 # 100 steps seems like a good compromise
 # 1000 is better, 10000 is almost continuous
-ODE_steps = 100.0
+ODE_steps = 100.0 * 10
 
 # Total number of ODE timesteps per simulation
 # A good combo:
 #   ODE_steps = 100
 #   time_end = 20000
-time_end = 20000
+time_end = 20000 * 10
 
 # Granularity for brute force search for optimization
 grid_grain = 0.001
