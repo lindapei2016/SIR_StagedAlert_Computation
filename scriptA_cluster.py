@@ -32,11 +32,47 @@ eps = 1e-6
 # Put on cluster to find optimal threshold value given kappa,
 #   where optimal means minimum number of days in stage 2
 
-problem = SIR.ProblemInstance()
-policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
-                                                    (0, problem.I_constraint + eps, problem.grid_grain),
-                                                    symmetric=True)
+# beta0 = 1/10, increment by 1/100 until 3/10
 
-problem.kappa = 1 / 100 * (rank + 1)
-print(problem.find_optimum(policies, str(int(problem.kappa * 100))))
+if rank < 80:
+    for val in np.arange(1, 26)/100:
+        problem = SIR.ProblemInstance()
+        policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                            (0, problem.I_constraint + eps, problem.grid_grain),
+                                                            symmetric=True)
+        problem.beta0 = problem.beta0 + val
+        problem.max_lockdowns_allowed = 1
+        problem.kappa = (40 / 100) + (1/100) * (rank + 1)
+        print(problem.find_optimum(policies, "1max_beta0_" + str(int(problem.beta0*100)) + "_kappa_" + str(int(problem.kappa * 100))))
+elif rank < 160:
+    for val in np.arange(26, 51)/100:
+        problem = SIR.ProblemInstance()
+        policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                            (0, problem.I_constraint + eps, problem.grid_grain),
+                                                            symmetric=True)
+        problem.beta0 = problem.beta0 + val
+        problem.max_lockdowns_allowed = 1
+        problem.kappa = (40 / 100) + (1/100) * (rank - 80 + 1)
+        print(problem.find_optimum(policies, "1max_beta0_" + str(int(problem.beta0*100)) + "_kappa_" + str(int(problem.kappa * 100))))
+elif rank < 240:
+    for val in np.arange(1, 26)/100:
+        problem = SIR.ProblemInstance()
+        policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                            (0, problem.I_constraint + eps, problem.grid_grain),
+                                                            symmetric=True)
+        problem.beta0 = problem.beta0 + val
+        problem.max_lockdowns_allowed = np.inf
+        problem.kappa = (40 / 100) + (1/100) * (rank - 160 + 1)
+        print(problem.find_optimum(policies, "nomax_beta0_" + str(int(problem.beta0*100)) + "_kappa_" + str(int(problem.kappa * 100))))
+else:
+    for val in np.arange(26, 51)/100:
+        problem = SIR.ProblemInstance()
+        policies = SIR.ProblemInstance.thresholds_generator((0, problem.I_constraint + eps, problem.grid_grain),
+                                                            (0, problem.I_constraint + eps, problem.grid_grain),
+                                                            symmetric=True)
+        problem.beta0 = problem.beta0 + val
+        problem.max_lockdowns_allowed = np.inf
+        problem.kappa = (40 / 100) + (1/100) * (rank - 240 + 1)
+        print(problem.find_optimum(policies, "nomax_beta0_" + str(int(problem.beta0*100)) + "_kappa_" + str(int(problem.kappa * 100))))
+
 

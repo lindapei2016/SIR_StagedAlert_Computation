@@ -6,7 +6,12 @@
 #   reaches a pre-specified threshold, and each stage has an immediate
 #   and deterministic transmission reduction that mimics a real-world
 #   policy intervention.
-# Linda Pei 2023
+
+# Note -- the discretization is a little bit goofy in the sense that
+#   you can lockdown for a partial day (during one of the ODE timesteps during
+#   a given "day") -- might be good to fix this
+#  Also might be good to only output S and I on the actual days,
+#   not for all of the ODE timesteps
 
 ###############################################################################
 
@@ -26,11 +31,9 @@ sys.stdout.flush()
 # For exploratory plotting -- turn this off for cluster
 # import matplotlib.pyplot as plt
 # import matplotlib
-
 # matplotlib.use("TkAgg")
 
 import scipy as sp
-
 import time
 
 ###############################################################################
@@ -295,16 +298,13 @@ class ProblemInstance:
             #   we will not return to lockdown so we will not accumulate
             #   additional costs -- can early terminate here for
             #   optimization purposes
-            # If self.full_output == True, e.g. for plotting purposes,
-            #   do not early terminate here
             if x0[t] == 1 and S[t] < 1 / (self.beta0 * self.tau):
 
-                if not self.full_output:
-                    x0 = x0[:t + 1]
-                    x1 = x1[:t + 1]
-                    S = S[:t + 1]
-                    I = I[:t + 1]
-                    break
+                x0 = x0[:t + 1]
+                x1 = x1[:t + 1]
+                S = S[:t + 1]
+                I = I[:t + 1]
+                break
 
         if feasible:
             cost = self.cost_func_linear(x0, x1)
@@ -376,6 +376,7 @@ class ProblemInstance:
             return filename_prefix, policies[best], cost_history[best], num_lockdowns_history[best]
 
         else:
+
             cost_history, num_lockdowns_history, total_x0_history, total_x1_history = self.simulate_many_policies(
                 policies)
             best = np.argmin(cost_history)
