@@ -1,6 +1,6 @@
 ###############################################################################
 
-# This program "simulates" a deterministic SIR model with a 2-stage staged
+# This program "simulates" a deterministic SIR model with a 3-stage staged
 #   alert policy by advancing a system of ODEs in discretized timeODE_steps.
 #   Each stage is triggered when the proportion of infected individuals
 #   reaches a pre-specified threshold, and each stage has an immediate
@@ -13,10 +13,23 @@
 #  Also might be good to only output S and I on the actual days,
 #   not for all of the ODE timesteps
 
+# For simplicity, we have symmetric thresholds for the 3-stage case.
+#   The 2-stage code allows asymmetric thresholds.
+# As a result of different structure, the method thresholds_generator() is
+#   different for the 3-stage case compared to the 2-stage case.
+
+# For simplicity, we have an unlimited number of lockdowns.
+#   Having a maximum number of lockdowns for a 3-stage system
+#   probably makes less sense.
+
+# Stage 0 (x0) --> "low" -- no transmission reduction
+# Stage 1 (x1) --> "medium"
+# Stage 2 (x2) --> "high"
+
 ###############################################################################
 
 # Imports
-import SIR_det_2stages_params as SIR_params
+import SIR_det_3stages_params as SIR_params
 
 from mpi4py import MPI
 import numpy as np
@@ -46,6 +59,7 @@ master_rank = size - 1
 
 eps = 1e-6
 
+
 ###############################################################################
 
 
@@ -58,11 +72,14 @@ class Results:
         '''
         :param cost: [scalar] cost of staged-alert policy over
             simulation timeframe
-        :param num_lockdowns: [int] number of lockdowns
+        :param num_lockdowns: [int] number of lockdowns (referring
+            to strictest stage, stage 2)
         :param x0: [array of 0-1s] jth element indicates whether
             system was in stage 0 ("normal") at simulation time j
         :param x1: [array of 0-1s] jth element indicates whether
-            system was in stage 1 (lockdown) at simulation time j
+            system was in stage 1 (medium stage) at simulation time j
+        :param x2: [array of 0-1s] jth element indicates whether
+            system was in stage 2 (lockdown) at simulation time j
         :param S: [array of reals] jth element is proportion
             of population in Susceptible compartment j
         :param I: [array of reals] jth element is proportion
@@ -73,6 +90,7 @@ class Results:
         self.num_lockdowns = 0
         self.x0 = np.array([])
         self.x1 = np.array([])
+        self.x2 = np.array([])
         self.S = np.array([])
         self.I = np.array([])
         self.R = np.array([])
@@ -86,11 +104,12 @@ class Results:
         print("Number of lockdowns: " + str(self.num_lockdowns))
         print("x0: " + str(self.x0))
         print("x1: " + str(self.x1))
+        print("x2: " + str(self.x2))
         print("S: " + str(self.S))
         print("I: " + str(self.I))
         print("R: " + str(self.R))
 
-    def update(self, cost, num_lockdowns, x0, x1, S, I, R):
+    def update(self, cost, num_lockdowns, x0, x1, x2, S, I, R):
         '''
         See __init__ parameters for documentation.
         Updates all attributes according to passed values.
@@ -100,6 +119,7 @@ class Results:
         self.num_lockdowns = num_lockdowns
         self.x0 = x0
         self.x1 = x1
+        self.x2 = x2
         self.S = S
         self.I = I
         self.R = R
@@ -113,6 +133,7 @@ class Results:
         self.num_lockdowns = 0
         self.x0 = np.array([])
         self.x1 = np.array([])
+        self.x2 = np.array([])
         self.S = np.array([])
         self.I = np.array([])
         self.R = np.array([])
@@ -131,69 +152,53 @@ class ProblemInstance:
         self.I_start = SIR_params.I_start
         self.beta0 = SIR_params.beta0
         self.tau = SIR_params.tau
-        self.kappa = SIR_params.kappa
-        self.cost0 = SIR_params.cost0
-        self.cost1 = SIR_params.cost1
-        self.threshold_up = SIR_params.threshold_up
-        self.threshold_down = SIR_params.threshold_down
+        self.medium_kappa = SIR_params.medium_kappa
+        self.high_kappa = SIR_params.high_kappa
+        self.low_stage_cost = SIR_params.low_stage_cost
+        self.medium_stage_cost = SIR_params.medium_stage_cost
+        self.high_stage_cost = SIR_params.high_stage_cost
+        self.medium_threshold = SIR_params.medium_threshold
+        self.high_threshold = SIR_params.high_threshold
         self.grid_grain = SIR_params.grid_grain
         self.inertia = SIR_params.inertia
-        self.stopping_condition = SIR_params.stopping_condition
-        self.max_lockdowns_allowed = SIR_params.max_lockdowns_allowed
         self.full_output = SIR_params.full_output
-
+        self.stopping_condition = SIR_params.stopping_condition
         self.results = Results()
 
     @staticmethod
-    def thresholds_generator(threshold_up_info, threshold_down_info, symmetric=True):
+    def thresholds_generator(medium_threshold_info, high_threshold_info):
         """
-        :param threshold_up_info: [3-tuple] with elements corresponding to
+        :param medium_threshold_info: [3-tuple] with elements corresponding to
             start point, end point, and step size (all must be integers)
-            for candidate values for threshold_up
-        :param threshold_down_info: see threshold_down
-        :param symmetric: [Boolean] determines whether threshold_up
-            is enforced to be the same as threshold_down
+            for candidate values for medium_threshold
+        :param high_threshold_info: see medium_threshold_info
         :return: [array] of distinct 2-tuples representing all possible
-            combos generated from threshold_up_info and threshold_down_info, where
+            combos generated from medium_threshold_info and high_threshold_info, where
             each 2-tuple's second value is less than its first value.
         """
 
         # Create an array (grid) of potential values for each threshold
-        threshold_up_options = np.arange(threshold_up_info[0],
-                                         threshold_up_info[1],
-                                         threshold_up_info[2])
-        threshold_down_options = np.arange(threshold_down_info[0],
-                                           threshold_down_info[1],
-                                           threshold_down_info[2])
+        medium_threshold_options = np.arange(medium_threshold_info[0],
+                                         medium_threshold_info[1],
+                                         medium_threshold_info[2])
+        high_threshold_options = np.arange(high_threshold_info[0],
+                                           high_threshold_info[1],
+                                           high_threshold_info[2])
 
-        if symmetric == True:
-            threshold_candidates_feasible = []
-
-            for combo in threshold_up_options:
-                threshold_candidates_feasible.append((combo, combo))
-
-        else:
-            # Using Cartesian products, create a list of 2-tuple combos
-            threshold_options = [threshold_up_options, threshold_down_options]
-            threshold_candidates = []
-            for combo in itertools.product(*threshold_options):
+        # Using Cartesian products, create a list of 2-tuple combos
+        threshold_options = (medium_threshold_options, high_threshold_options)
+        threshold_candidates = []
+        for combo in itertools.product(*threshold_options):
+            if combo[0] <= combo[1]:
                 threshold_candidates.append(combo)
 
-            threshold_candidates_feasible = threshold_candidates
+        return threshold_candidates
 
-            # Eliminate 2-tuples that do not satisfy monotonicity constraint
-            # However, ties in thresholds are allowed
-            # threshold_up cannot be smaller than threshold_down
-            # threshold_candidates_feasible = []
-            # for combo in threshold_candidates:
-            #     if np.all(np.diff(combo) <= 0):
-            #        threshold_candidates_feasible.append(combo)
+    def cost_func_linear(self, x0_vector, x1_vector, x2_vector):
 
-        return threshold_candidates_feasible
-
-    def cost_func_linear(self, x0_vector, x1_vector):
-
-        return self.cost0 * np.sum(x0_vector) + self.cost1 * np.sum(x1_vector)
+        return self.low_stage_cost * np.sum(x0_vector) + \
+               self.medium_stage_cost * np.sum(x1_vector) + \
+               self.high_stage_cost * np.sum(x2_vector)
 
     def simulate_policy(self):
 
@@ -210,6 +215,7 @@ class ProblemInstance:
         beta = np.zeros(self.time_end)
         x0 = np.zeros(self.time_end)
         x1 = np.zeros(self.time_end)
+        x2 = np.zeros(self.time_end)
 
         S[0] = self.S_start
         I[0] = self.I_start
@@ -218,16 +224,18 @@ class ProblemInstance:
         # Start in stage 0
         x0[0] = 1
         x1[0] = 0
+        x2[0] = 0
 
         I_constraint = self.I_constraint
 
-        threshold_up = self.threshold_up
-        threshold_down = self.threshold_down
+        medium_threshold = self.medium_threshold
+        high_threshold = self.high_threshold
 
         beta0 = self.beta0
         tau = self.tau
 
-        kappa = self.kappa
+        medium_kappa = self.medium_kappa
+        high_kappa = self.high_kappa
 
         ODE_steps = self.ODE_steps
 
@@ -239,51 +247,73 @@ class ProblemInstance:
 
         t = 0
 
-        # while S > 1/R0 (herd immunity not yet reached)
+        # If stopping_condition == "herd_immunity",
+        #   this loops while S > 1/R0 (herd immunity not yet reached)
         for t in range(1, self.time_end):
 
+            # Tracking for inertia requirement
             time_since_last_change += 1
 
-            beta[t] = beta0 * (1 - kappa * x1[t - 1])
+            # ~~~~~~~~~~~~~~~~~~~~~~~~ #
+            # Logic for SIR equations
+            # ~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+            # Update transmission rate depending on stage
+            beta[t] = beta0 * (1 - medium_kappa * x1[t - 1] - high_kappa * x2[t - 1])
 
             S[t] = S[t - 1] - (beta[t] * S[t - 1] * I[t - 1]) * 1 / ODE_steps
 
             I[t] = I[t - 1] + (beta[t] * S[t - 1] * I[t - 1] - I[t - 1] / tau) * \
-                   1 / ODE_steps
+                   (1 / ODE_steps)
 
-            R[t] = R[t-1] + (I[t - 1] / tau) * (1 / ODE_steps)
+            R[t] = R[t - 1] + (I[t - 1] / tau) * (1 / ODE_steps)
 
-            # If previous stage was stage 0, check conditions for moving to stage 1
-            if x0[t - 1] == 1:
-                if I[t] >= threshold_up:
-                    # If lockdown budget left, move to stage 1 (lockdown)
-                    if num_lockdowns < self.max_lockdowns_allowed and time_since_last_change >= inertia:
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+            # Logic for 3-stage system:
+            #   no max lockdowns, symmetric thresholds, inertia
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+            # Decision tree:
+            # Check I[t] versus threshold (high, medium, low/none)
+            # Check stage of previous timepoint
+            # Check if inertia requirement allows changing of stages
+
+            if I[t] >= high_threshold:
+                # If stage of previous timepoint was also 2,
+                #   stay in this stage
+                if x2[t - 1] == 1:
+                    x2[t] = 1
+                else:
+                    if time_since_last_change >= inertia:
+                        x2[t] = 1
+                        time_since_last_change = 0 # the stage has just been changed
                         num_lockdowns += 1
+                    else: # inertia requires staying in the previous stage
+                        x0[t] = x0[t - 1]
+                        x1[t] = x1[t - 1]
+                        x2[t] = x2[t - 1]
+            elif I[t] >= medium_threshold:
+                if x1[t - 1] == 1:
+                    x1[t] = 1
+                else:
+                    if time_since_last_change >= inertia:
                         x1[t] = 1
                         time_since_last_change = 0
-                    # If no lockdown budget left, remain in stage 0
-                    # Or if changing stages not allowed due to inertia, remain in stage 0
                     else:
                         x0[t] = x0[t - 1]
+                        x1[t] = x1[t - 1]
+                        x2[t] = x2[t - 1]
+            else: # low stage
+                if x0[t - 1] == 1:
+                    x0[t] = 1
                 else:
-                    x0[t] = x0[t - 1]
-            # Else if previous stage was stage 1, check conditions for moving to stage 0
-            elif x1[t - 1] == 1:
-                if I[t] < threshold_down:
-                    # If infections decreasing, move to stage 0
-                    # This condition handles the case where
-                    #   lockdown_up < lockdown_down -- in this case,
-                    #   we only want to leave lockdown if infections
-                    #   are decreasing -- otherwise, we would leave
-                    #   lockdown as soon as we entered lockdown
-                    if I[t] < I[t - 1] and time_since_last_change >= inertia:
+                    if time_since_last_change >= inertia:
                         x0[t] = 1
                         time_since_last_change = 0
-                    # If infections still increasing or inertia constraint, remain in stage 1
                     else:
+                        x0[t] = x0[t - 1]
                         x1[t] = x1[t - 1]
-                else:
-                    x1[t] = x1[t - 1]
+                        x2[t] = x2[t - 1]
 
             if I[t] >= I_constraint:
                 feasible = False
@@ -302,14 +332,15 @@ class ProblemInstance:
 
         x0 = x0[:t + 1]
         x1 = x1[:t + 1]
+        x2 = x2[:t + 1]
         S = S[:t + 1]
         I = I[:t + 1]
         R = R[:t + 1]
 
         if feasible:
-            cost = self.cost_func_linear(x0, x1)
+            cost = self.cost_func_linear(x0, x1, x2)
 
-        self.results.update(cost, num_lockdowns, x0, x1, S, I, R)
+        self.results.update(cost, num_lockdowns, x0, x1, x2, S, I, R)
 
     def simulate_many_policies(self, policies):
         '''
@@ -317,7 +348,7 @@ class ProblemInstance:
         :param policies: [array] of 2-tuples, each of which have a first value
             less than or equal to its second value -- e.g., output from
             thresholds_generator
-        :param full_output: [Boolean] whether to output x0, x1, S, I
+        :param full_output: [Boolean] whether to output x0, x1, x2, S, I
             in addition to cost
         :return: cost_history: [array] of cost scalars -- ith value corresponds
                 to cost of ith policy in policies
@@ -326,6 +357,8 @@ class ProblemInstance:
                 in stage 0
             total_x1_history: [array] of nonnegative scalars -- same as
                 total_x0_history but for number of days in stage 1
+            total_x2_history: [array] of nonnegative scalars -- same as
+                total_x0_history but for number of days in stage 2
             all arrays have length equal to length of policies parameter
         '''
 
@@ -333,13 +366,14 @@ class ProblemInstance:
         num_lockdowns_history = []
         total_x0_history = []
         total_x1_history = []
+        total_x2_history = []
 
         num_policies = len(policies)
 
         for i in range(num_policies):
             thresholds = policies[i]
-            self.threshold_up = thresholds[0]
-            self.threshold_down = thresholds[1]
+            self.medium_threshold = thresholds[0]
+            self.high_threshold = thresholds[1]
 
             self.simulate_policy()
             cost_history.append(self.results.cost)
@@ -348,11 +382,12 @@ class ProblemInstance:
             if self.full_output:
                 total_x0_history.append(np.sum(self.results.x0))
                 total_x1_history.append(np.sum(self.results.x1))
+                total_x2_history.append(np.sum(self.results.x2))
 
         if not self.full_output:
             return cost_history, num_lockdowns_history
         else:
-            return cost_history, num_lockdowns_history, total_x0_history, total_x1_history
+            return cost_history, num_lockdowns_history, total_x0_history, total_x1_history, total_x2_history
 
     def find_optimum(self, policies, filename_prefix):
         '''
@@ -377,15 +412,16 @@ class ProblemInstance:
 
         else:
 
-            cost_history, num_lockdowns_history, total_x0_history, total_x1_history = self.simulate_many_policies(
-                policies)
+            cost_history, num_lockdowns_history, total_x0_history, total_x1_history, total_x2_history = \
+                self.simulate_many_policies(policies)
             best = np.argmin(cost_history)
             np.savetxt(filename_prefix + "_cost_history.csv", cost_history, delimiter=",")
             np.savetxt(filename_prefix + "_num_lockdowns_history.csv", num_lockdowns_history, delimiter=",")
             np.savetxt(filename_prefix + "_total_x0_history.csv", total_x0_history, delimiter=",")
             np.savetxt(filename_prefix + "_total_x1_history.csv", total_x1_history, delimiter=",")
+            np.savetxt(filename_prefix + "_total_x2_history.csv", total_x2_history, delimiter=",")
             return filename_prefix, policies[best], cost_history[best], \
-                   num_lockdowns_history[best], total_x0_history[best], total_x1_history[best]
+                   num_lockdowns_history[best], total_x0_history[best], total_x1_history[best], total_x2_history[best]
 
 
 ###############################################################################
@@ -422,46 +458,4 @@ def build_sol_curve_eq(I0_val, I_val, S0_val, R0_val):
 
     return sol_curve_eq
 
-
-###############################################################################
-
-# problem = ProblemInstance()
-# problem.inertia = 0
-# problem.kappa = 0.5
-# problem.threshold_up = 0.067
-# problem.threshold_down = 0.09
-# problem.full_output = True
-# problem.simulate_policy()
-#
-# breakpoint()
-#
-# sol_curve_eq = build_sol_curve_eq(problem.I_start,
-#                                   problem.threshold_up,
-#                                   problem.S_start,
-#                                   problem.beta0 * problem.tau)
-#
-# S_val = np.max(sp.optimize.newton(sol_curve_eq, [eps, 1]))
-#
-# sol_curve_eq = build_sol_curve_eq(problem.threshold_up,
-#                                   problem.threshold_down,
-#                                   S_val,
-#                                   problem.beta0 * (1 - problem.kappa) * problem.tau)
-#
-# S_val = np.min(sp.optimize.newton(sol_curve_eq, [eps, S_val, 1]))
-#
-# print(compute_max_infections(problem.threshold_down,
-#                              S_val,
-#                              problem.beta0 * problem.tau))
-#
-# problem.simulate_policy()
-# I_descending = np.sort(problem.results.I)[::-1]
-# print(I_descending)
-#
-# breakpoint()
-
-# According to formula, need beta*tau <= 1.693 roughly to have peak infections
-#   less than 0.1 -- for beta = beta0 * (1-kappa), beta0 = 0.3 and tau = 10,
-#   this means we need kappa >= 0.436 roughly.
-
-# For peak infections <= 0.2, need beta*tau <= 2.27 --> kappa >= 0.243
-# For peak infections <= 0.4, need beta*tau <= 3.95 --> any kappa will do
+breakpoint()

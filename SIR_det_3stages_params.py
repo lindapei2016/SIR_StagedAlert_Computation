@@ -1,6 +1,6 @@
 ###############################################################################
 
-# Default parameters for deterministic SIR model with 2 stages.
+# Default parameters for deterministic SIR model with 3 stages.
 
 ###############################################################################
 
@@ -39,26 +39,22 @@ tau = 10
 
 # Transmission reduction under lockdown
 # This must be in [0,1]
-kappa = 0.8
+medium_kappa = 0.5
+high_kappa = 0.7
 
-# Cost of stage 0 and stage 1 (we need cost0 < cost1)
-cost0 = 0
-cost1 = 1
+# Cost of stage 0, 1, 2
+# Need cost of stage 0 < cost of stage 1 < cost of stage 2
+low_stage_cost = 0
+medium_stage_cost = 10
+high_stage_cost = 100
 
 # Trigger at which to move to stage 1
 #   and move out of stage 1, respectively --
 #   refers to the proportion of infected (I) at which
 #   to change stages.
-# threshold_down actually does not have to be less than
-#   or equal to threshold_up, because we only allow
-#   moving out of stage 1 if infections are decreasing
-#   relative to previous timepoint.
-threshold_up = 1
-threshold_down = 1
-
-# Maximum number of times the system can move from
-#   stage 0 to stage 1.
-max_lockdowns_allowed = 1
+# We require medium_threshold <= high_threshold
+medium_threshold = np.inf
+high_threshold = np.inf
 
 # Set to False for performance runs.
 # Change to True if also interested in values of x0, x1,
