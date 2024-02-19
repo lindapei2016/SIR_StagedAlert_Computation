@@ -11,7 +11,7 @@ import numpy as np
 #   (compared to continuous values)
 # 100 steps seems like a good compromise
 # 1000 is better, 10000 is almost continuous
-ODE_steps = 1000.0
+ODE_steps = 100.0
 
 # Total number of ODE timesteps per simulation
 # A good combo:
@@ -20,7 +20,7 @@ ODE_steps = 1000.0
 time_end = 20000 * 1000
 
 # Granularity for brute force search for optimization
-grid_grain = 0.001
+grid_grain = 0.005
 
 # Proxy for hospital capacity --
 #   staged alert policies whose systems have I > I_constraint

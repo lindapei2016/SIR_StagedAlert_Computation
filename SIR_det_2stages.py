@@ -233,6 +233,16 @@ class ProblemInstance:
 
         inertia = self.inertia
 
+        # We want the ability to make the first stage change whenever
+        # e.g. if inertia = 1e3, do NOT want the inertia constraint to prevent
+        #   moving out of stage 0 until simulation time 1e3
+        # So only consider the inertia constraint after the first stage change
+        # We only have to check inertia_constraint_active when in stage 0
+        #   and moving to a different stage. Since we start in stage 0, if we
+        #   are in stage 1 (or 2), we have already made the first stage change,
+        #   so the inertia_constraint_active is True.
+        inertia_constraint_active = False
+
         stopping_condition = self.stopping_condition
 
         time_since_last_change = 0
@@ -256,15 +266,24 @@ class ProblemInstance:
             # If previous stage was stage 0, check conditions for moving to stage 1
             if x0[t - 1] == 1:
                 if I[t] >= threshold_up:
-                    # If lockdown budget left, move to stage 1 (lockdown)
-                    if num_lockdowns < self.max_lockdowns_allowed and time_since_last_change >= inertia:
+                    if inertia_constraint_active:
+                        # If lockdown budget left, move to stage 1 (lockdown)
+                        if num_lockdowns < self.max_lockdowns_allowed and time_since_last_change >= inertia:
+                            num_lockdowns += 1
+                            x1[t] = 1
+                            time_since_last_change = 0
+                        # If no lockdown budget left, remain in stage 0
+                        # Or if changing stages not allowed due to inertia, remain in stage 0
+                        else:
+                            x0[t] = x0[t - 1]
+                    else:
+                        # We skip checking if num_lockdowns < self.max_lockdowns_allowed because
+                        #   this must be True for the first stage change / lockdown,
+                        #   assuming the non-trivial specification self.max_lockdowns >= 1
+                        inertia_constraint_active = True
                         num_lockdowns += 1
                         x1[t] = 1
                         time_since_last_change = 0
-                    # If no lockdown budget left, remain in stage 0
-                    # Or if changing stages not allowed due to inertia, remain in stage 0
-                    else:
-                        x0[t] = x0[t - 1]
                 else:
                     x0[t] = x0[t - 1]
             # Else if previous stage was stage 1, check conditions for moving to stage 0

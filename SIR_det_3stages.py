@@ -241,6 +241,17 @@ class ProblemInstance:
 
         inertia = self.inertia
 
+        # We want the ability to make the first stage change whenever
+        # e.g. if inertia = 1e3, do NOT want the inertia constraint to prevent
+        #   moving out of stage 0 until simulation time 1e3
+        # So only consider the inertia constraint after the first stage change
+        # Similar to logic from 2-stage system, if we are in the stage 0
+        #   infections level, and at the previous timepoint we were not in stage 0,
+        #   the first stage change has already occurred because we start the
+        #   simulation in stage 0. Therefore, we do not need to check
+        #   inertia_constraint_active, because it IS active.
+        inertia_constraint_active = False
+
         stopping_condition = self.stopping_condition
 
         time_since_last_change = 0
@@ -284,29 +295,44 @@ class ProblemInstance:
                 if x2[t - 1] == 1:
                     x2[t] = 1
                 else:
-                    if time_since_last_change >= inertia:
+                    if inertia_constraint_active:
+                        if time_since_last_change >= inertia:
+                            x2[t] = 1
+                            time_since_last_change = 0 # the stage has just been changed
+                            num_lockdowns += 1
+                        else: # inertia requires staying in the previous stage
+                            x0[t] = x0[t - 1]
+                            x1[t] = x1[t - 1]
+                            x2[t] = x2[t - 1]
+                    else:
+                        inertia_constraint_active = True
                         x2[t] = 1
-                        time_since_last_change = 0 # the stage has just been changed
+                        time_since_last_change = 0
                         num_lockdowns += 1
-                    else: # inertia requires staying in the previous stage
-                        x0[t] = x0[t - 1]
-                        x1[t] = x1[t - 1]
-                        x2[t] = x2[t - 1]
             elif I[t] >= medium_threshold:
                 if x1[t - 1] == 1:
                     x1[t] = 1
                 else:
-                    if time_since_last_change >= inertia:
+                    if inertia_constraint_active:
+                        if time_since_last_change >= inertia:
+                            x1[t] = 1
+                            time_since_last_change = 0
+                        else:
+                            x0[t] = x0[t - 1]
+                            x1[t] = x1[t - 1]
+                            x2[t] = x2[t - 1]
+                    else:
+                        inertia_constraint_active = True
                         x1[t] = 1
                         time_since_last_change = 0
-                    else:
-                        x0[t] = x0[t - 1]
-                        x1[t] = x1[t - 1]
-                        x2[t] = x2[t - 1]
+                        num_lockdowns += 1
             else: # low stage
                 if x0[t - 1] == 1:
                     x0[t] = 1
                 else:
+                    # See comment when initializing inertia_constraint_active
+                    # At this point, inertia_constraint_active must be True,
+                    #   so we do not need to check it.
                     if time_since_last_change >= inertia:
                         x0[t] = 1
                         time_since_last_change = 0
@@ -457,5 +483,3 @@ def build_sol_curve_eq(I0_val, I_val, S0_val, R0_val):
         return I0_val + S0_val - I_val - S_val + np.log(S_val / S0_val) / R0_val
 
     return sol_curve_eq
-
-breakpoint()
