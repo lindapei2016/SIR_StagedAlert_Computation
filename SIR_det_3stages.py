@@ -325,7 +325,6 @@ class ProblemInstance:
                         inertia_constraint_active = True
                         x1[t] = 1
                         time_since_last_change = 0
-                        num_lockdowns += 1
             else: # low stage
                 if x0[t - 1] == 1:
                     x0[t] = 1

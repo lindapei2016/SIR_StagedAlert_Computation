@@ -34,12 +34,12 @@ I_start = 0.001
 # Unmitigated transmission parameter and infectious period
 # Using commonly used parameter values for start of covid
 # Previously used beta0 = 3/10
-beta0 = 1.0 / 10.0
+beta0 = 3.0 / 10.0
 tau = 10
 
 # Transmission reduction under lockdown
 # This must be in [0,1]
-kappa = 0.8
+kappa = 0.6
 
 # Cost of stage 0 and stage 1 (we need cost0 < cost1)
 cost0 = 0
