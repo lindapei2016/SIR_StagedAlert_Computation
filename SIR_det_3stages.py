@@ -447,38 +447,3 @@ class ProblemInstance:
             np.savetxt(filename_prefix + "_total_x2_history.csv", total_x2_history, delimiter=",")
             return filename_prefix, policies[best], cost_history[best], \
                    num_lockdowns_history[best], total_x0_history[best], total_x1_history[best], total_x2_history[best]
-
-
-###############################################################################
-
-# Check analytically to see if a threshold is feasible
-#   (for two stages, a "normal" stage and a lockdown stage).
-# Use a root-finding method to find the value of S
-
-# One version of the equation has I0_val + S0_val simply replaced by 1
-#   but this assumes that I0_val + S0_val = 1. This assumption
-#   does not hold for our use-case of max infections.
-def compute_max_infections(I0_val, S0_val, R0_val):
-    return I0_val + S0_val - 1 / R0_val - np.log(R0_val * S0_val) / R0_val
-
-
-def build_sol_curve_eq(I0_val, I_val, S0_val, R0_val):
-    def sol_curve_eq(S_val):
-        '''
-        Solution curve is I = I0 + S0 - S + log(S/S0)/R0
-            (see Hethcote 2000 "The Mathematics of
-            Infectious Diseases").
-        Solution curve equation: for a given proportion
-            susceptible, returns difference between
-            pre-specified proportion infected and
-            actual proportion infected when proportion
-            susceptible equals
-        Want to find root of this equation to find
-            S that corresponds with I
-        :param S_val: [scalar in [0,1]] proportion susceptible.
-        :return: [scalar] actual proportion infected when
-            proportion susceptible equals S_val minus I_val
-        '''
-        return I0_val + S0_val - I_val - S_val + np.log(S_val / S0_val) / R0_val
-
-    return sol_curve_eq

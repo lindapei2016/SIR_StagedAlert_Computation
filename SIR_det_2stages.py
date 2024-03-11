@@ -139,6 +139,10 @@ class ProblemInstance:
         self.grid_grain = SIR_params.grid_grain
         self.inertia = SIR_params.inertia
         self.stopping_condition = SIR_params.stopping_condition
+        self.stopping_condition_recovered_proportion = SIR_params.stopping_condition_recovered_proportion
+        self.stopping_condition_infected_proportion = SIR_params.stopping_condition_infected_proportion
+        self.stopping_condition_susceptible_proportion = SIR_params.stopping_condition_susceptible_proportion
+        self.stopping_condition_time = SIR_params.stopping_condition_time
         self.max_lockdowns_allowed = SIR_params.max_lockdowns_allowed
         self.full_output = SIR_params.full_output
 
@@ -245,6 +249,11 @@ class ProblemInstance:
 
         stopping_condition = self.stopping_condition
 
+        stopping_condition_recovered_proportion = self.stopping_condition_recovered_proportion
+        stopping_condition_infected_proportion = self.stopping_condition_infected_proportion
+        stopping_condition_susceptible_proportion = self.stopping_condition_susceptible_proportion
+        stopping_condition_time = self.stopping_condition_time
+
         time_since_last_change = 0
 
         t = 0
@@ -315,8 +324,22 @@ class ProblemInstance:
             #   we will not return to lockdown so we will not accumulate
             #   additional costs -- can early terminate here for
             #   optimization purposes
+            # Note for recovered/infected/susceptible, whether the
+            #   stopping condition is ">" or "<" depends on the case
             if stopping_condition == "herd_immunity":
                 if x0[t] == 1 and S[t] < 1 / (self.beta0 * self.tau):
+                    break
+            elif stopping_condition == "recovered":
+                if R[t] > stopping_condition_recovered_proportion:
+                    break
+            elif stopping_condition == "infected":
+                if I[t] > stopping_condition_infected_proportion:
+                    break
+            elif stopping_condition == "susceptible":
+                if S[t] < stopping_condition_susceptible_proportion:
+                    break
+            else: # time stopping contiion
+                if t / ODE_steps > stopping_condition_time:
                     break
 
         x0 = x0[:t + 1]
@@ -440,47 +463,3 @@ def build_sol_curve_eq(I0_val, I_val, S0_val, R0_val):
         return I0_val + S0_val - I_val - S_val + np.log(S_val / S0_val) / R0_val
 
     return sol_curve_eq
-
-
-###############################################################################
-
-# problem = ProblemInstance()
-# problem.inertia = 0
-# problem.kappa = 0.5
-# problem.threshold_up = 0.067
-# problem.threshold_down = 0.09
-# problem.full_output = True
-# problem.simulate_policy()
-#
-# breakpoint()
-#
-# sol_curve_eq = build_sol_curve_eq(problem.I_start,
-#                                   problem.threshold_up,
-#                                   problem.S_start,
-#                                   problem.beta0 * problem.tau)
-#
-# S_val = np.max(sp.optimize.newton(sol_curve_eq, [eps, 1]))
-#
-# sol_curve_eq = build_sol_curve_eq(problem.threshold_up,
-#                                   problem.threshold_down,
-#                                   S_val,
-#                                   problem.beta0 * (1 - problem.kappa) * problem.tau)
-#
-# S_val = np.min(sp.optimize.newton(sol_curve_eq, [eps, S_val, 1]))
-#
-# print(compute_max_infections(problem.threshold_down,
-#                              S_val,
-#                              problem.beta0 * problem.tau))
-#
-# problem.simulate_policy()
-# I_descending = np.sort(problem.results.I)[::-1]
-# print(I_descending)
-#
-# breakpoint()
-
-# According to formula, need beta*tau <= 1.693 roughly to have peak infections
-#   less than 0.1 -- for beta = beta0 * (1-kappa), beta0 = 0.3 and tau = 10,
-#   this means we need kappa >= 0.436 roughly.
-
-# For peak infections <= 0.2, need beta*tau <= 2.27 --> kappa >= 0.243
-# For peak infections <= 0.4, need beta*tau <= 3.95 --> any kappa will do

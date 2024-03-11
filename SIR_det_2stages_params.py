@@ -17,7 +17,7 @@ ODE_steps = 1000.0
 # A good combo:
 #   ODE_steps = 100
 #   time_end = 20000
-time_end = 20000 * 1000
+time_end = int(2000 * ODE_steps)
 
 # Granularity for brute force search for optimization
 grid_grain = 0.001
@@ -76,6 +76,19 @@ full_output = False
 #   14-day rule set inertia to 14 * ODE_steps
 inertia = 0
 
-# Whether to stop at herd immunity or stop after first peak
-# Options: {"herd_immunity", "first_peak"}
+# Whether to stop at herd immunity, stop after first peak,
+#   stop after a certain proportion of recovered (or
+#   infected or susceptible), or after a certain number of
+#   simulation days (not counting discretized timepoints)
+# Options: {"herd_immunity", "first_peak",
+#   "recovered", "infected", "susceptible", "time"}
 stopping_condition = "herd_immunity"
+
+# Proportions at which to stop when stopping_condition equals
+#   "recovered", "infected", or "susceptible" respectively
+# See SIR_det_2stages for details -- whether stopping condition
+#   occurs upon being ">" or "<" a cutoff depends on the case
+stopping_condition_recovered_proportion = np.inf
+stopping_condition_infected_proportion = np.inf
+stopping_condition_susceptible_proportion = np.inf
+stopping_condition_time = np.inf
